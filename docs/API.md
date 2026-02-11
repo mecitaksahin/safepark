@@ -1,6 +1,13 @@
 # API Draft
 
-Bu dokuman Sprint-4 install flow ile guncellenmistir.
+Bu dokuman Sprint-5 ile PostgreSQL persistence akisina guncellenmistir.
+
+## Runtime Notes
+
+- Backend `DB1_URL` ile PostgreSQL (DB1) uzerinden calisir.
+- Uygulama acilisinda migrationlar otomatik calisir:
+  - `backend/db/migrations/0001_tenant_foundation.sql`
+  - `backend/db/migrations/0002_platform_state.sql`
 
 ## Health
 
@@ -20,14 +27,13 @@ Bu dokuman Sprint-4 install flow ile guncellenmistir.
 
 ```json
 {
-  "version": "0.4.0"
+  "version": "0.5.0"
 }
 ```
 
 ## Setup Status
 
 - `GET /setup/status`
-- Aciklama: Platform kurulum durumunu dondurur.
 - Response `200 OK`
 
 ```json
@@ -36,7 +42,7 @@ Bu dokuman Sprint-4 install flow ile guncellenmistir.
 }
 ```
 
-Kurulum tamamlandiktan sonra:
+Kurulumdan sonra:
 
 ```json
 {
@@ -48,13 +54,14 @@ Kurulum tamamlandiktan sonra:
 
 - `POST /install`
 - Aciklama: Ilk kurulum endpointi; ilk tenant + ilk branch + ilk admin kullaniciyi olusturur.
-- Not: Sadece bir kez basarili olur. Ikinci denemede `409 already_installed` doner.
-- `INSTALL_KEY` env var set ise header zorunlu: `x-install-key: <INSTALL_KEY>`
-- Request body:
+- Not: Sadece bir kez basarili olur. Sonraki denemelerde `409 already_installed` doner.
+- `INSTALL_KEY` env set ise `x-install-key` header zorunludur.
+
+Request:
 
 ```json
 {
-  "tenant": { "code": "sprint4-demo", "name": "Sprint 4 Demo Tenant" },
+  "tenant": { "code": "sprint5-demo", "name": "Sprint 5 Demo Tenant" },
   "branch": {
     "code": "izmir-01",
     "name": "Izmir Aqua Park",
@@ -68,21 +75,21 @@ Kurulum tamamlandiktan sonra:
 }
 ```
 
-- Response `201 Created`
+Response `201 Created`:
 
 ```json
 {
   "installed": true,
   "tenant": {
-    "id": "ten_0001",
-    "code": "sprint4-demo",
-    "name": "Sprint 4 Demo Tenant",
+    "id": "<uuid>",
+    "code": "sprint5-demo",
+    "name": "Sprint 5 Demo Tenant",
     "createdAt": "2026-02-11T12:00:00.000Z",
     "updatedAt": "2026-02-11T12:00:00.000Z"
   },
   "branch": {
-    "id": "brn_0001",
-    "tenantId": "ten_0001",
+    "id": "<uuid>",
+    "tenantId": "<uuid>",
     "code": "izmir-01",
     "name": "Izmir Aqua Park",
     "profile": { "timezone": "Europe/Istanbul", "capacity": 5500 },
@@ -91,8 +98,8 @@ Kurulum tamamlandiktan sonra:
   },
   "branches": [
     {
-      "id": "brn_0001",
-      "tenantId": "ten_0001",
+      "id": "<uuid>",
+      "tenantId": "<uuid>",
       "code": "izmir-01",
       "name": "Izmir Aqua Park",
       "profile": { "timezone": "Europe/Istanbul", "capacity": 5500 },
@@ -101,9 +108,9 @@ Kurulum tamamlandiktan sonra:
     }
   ],
   "adminUser": {
-    "id": "usr_0001",
-    "tenantId": "ten_0001",
-    "branchId": "brn_0001",
+    "id": "<uuid>",
+    "tenantId": "<uuid>",
+    "branchId": "<uuid>",
     "email": "admin@safepark.local",
     "fullName": "Platform Admin",
     "isActive": true,
@@ -115,15 +122,14 @@ Kurulum tamamlandiktan sonra:
 }
 ```
 
-- Hata:
-  - `403` `invalid_install_key` (`INSTALL_KEY` set ve header eksik/yanlis oldugunda)
-  - `409` `already_installed`
-  - `400` `missing_fields`, `weak_password`
+Hata:
+- `403` `invalid_install_key`
+- `409` `already_installed`
+- `400` `missing_fields`, `weak_password`
 
 ## Setup Bootstrap (Deprecated)
 
 - `POST /setup/bootstrap`
-- Durum: Deprecated
 - Response `410 Gone`
 
 ```json
@@ -139,26 +145,48 @@ Kurulum tamamlandiktan sonra:
 
 - `POST /tenants`
 - Header: `Authorization: Bearer <accessToken>`
-- Role policy: sadece `platform_admin`
-- Aciklama: Yeni tenant, primary branch ve tenant admin olusturur.
+- Role policy: `platform_admin`
 - Not: Platform once `POST /install` ile kurulmus olmali.
 
 ## Login
 
 - `POST /auth/login`
-- Request body:
+
+Request:
 
 ```json
 {
-  "tenantCode": "sprint4-demo",
+  "tenantCode": "sprint5-demo",
   "email": "admin@safepark.local",
   "password": "Admin123!"
 }
 ```
 
-- Hata:
-  - `401` `invalid_credentials`
-  - `400` `missing_credentials`
+Response `200 OK`:
+
+```json
+{
+  "accessToken": "<token>",
+  "tokenType": "Bearer",
+  "expiresAt": "2026-02-11T20:00:00.000Z",
+  "user": {
+    "id": "<uuid>",
+    "tenantId": "<uuid>",
+    "branchId": "<uuid>",
+    "email": "admin@safepark.local",
+    "fullName": "Platform Admin",
+    "isActive": true,
+    "lastLoginAt": "2026-02-11T12:05:00.000Z",
+    "createdAt": "2026-02-11T12:00:00.000Z",
+    "updatedAt": "2026-02-11T12:05:00.000Z",
+    "roles": ["super_admin", "platform_admin"]
+  }
+}
+```
+
+Hata:
+- `401` `invalid_credentials`
+- `400` `missing_credentials`
 
 ## Me
 
@@ -173,3 +201,8 @@ Kurulum tamamlandiktan sonra:
 - Role policy:
   - `super_admin`: ayni tenant icindeki tum branchler
   - `branch_manager`: sadece kendi `branchId`
+
+Hata:
+- `401` `missing_bearer_token`, `invalid_or_expired_token`
+- `403` `insufficient_role`, `cross_tenant_forbidden`, `branch_scope_forbidden`
+- `404` `branch_not_found`
