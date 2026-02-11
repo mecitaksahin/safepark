@@ -4,46 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SafePark Tenant UI</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <script>
-      window.tailwind = {
-        config: {
-          theme: {
-            extend: {
-              colors: {
-                canvas: "#f5f4ef",
-                ink: "#1f2a30",
-                mist: "#e4ece8",
-                brand: "#1f7a69",
-                "brand-strong": "#185a4f",
-                danger: "#b42318",
-                warning: "#b54708",
-              },
-              borderRadius: {
-                shell: "1.25rem",
-              },
-              fontFamily: {
-                sans: ["Manrope", "Segoe UI", "sans-serif"],
-                heading: ["Fraunces", "Georgia", "serif"],
-              },
-              boxShadow: {
-                panel: "0 20px 55px rgba(24, 42, 40, 0.14)",
-              },
-            },
-          },
-        },
-      };
-    </script>
-    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
-    <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body class="min-h-screen bg-canvas text-ink">
+  <body>
     <div id="app"></div>
-    <script type="module" src="./main.js"></script>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
