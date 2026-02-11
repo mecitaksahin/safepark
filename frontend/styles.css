@@ -37,6 +37,19 @@ h1 {
   font-weight: 600;
 }
 
+#status.status-ok {
+  color: #1d8c2f;
+}
+
+#status.status-fail {
+  color: #c62828;
+}
+
+#lastChecked {
+  margin: 0.4rem 0 0;
+  font-size: 0.95rem;
+}
+
 button {
   margin-top: 1rem;
   border: 0;
@@ -51,4 +64,3 @@ button {
 button:hover {
   filter: brightness(0.95);
 }
-
