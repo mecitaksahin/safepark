@@ -1,0 +1,13 @@
+{
+  "name": "safepark-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SafePark backend service",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "smoke": "node smoke.js"
+  }
+}
+
