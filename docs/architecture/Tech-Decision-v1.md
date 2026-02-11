@@ -4,7 +4,7 @@
 
 1. Database: PostgreSQL (DB-1 + DB-2)
 2. Backend: Node.js + TypeScript + NestJS (Fastify adapter)
-3. Frontend: Vue 3 + TypeScript + Vite
+3. Frontend: Vue 3 + TypeScript + Vite + Tailwind CSS
 4. Queue/Cache: Redis
 5. Deploy model: Docker-first, Kubernetes-ready
 
@@ -36,6 +36,13 @@ Alternatif:
 
 Sonuc:
 - Evet, Vue 3 bu proje icin mantikli bir secimdir.
+
+## 4.1 Neden Tailwind CSS?
+
+1. Backoffice ekranlarinda hizli ve tutarli UI gelistirme
+2. Tasarim tokenlarinin (renk, spacing, typography) merkezi yonetimi
+3. Component kutuphanesi ile (ornegin headless/ui patternleri) iyi uyum
+4. MVP hizini dusurmeyen, sonrasinda design system'e evrilebilen yapi
 
 ## 5. Mimari Yapi
 

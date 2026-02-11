@@ -15,26 +15,34 @@
 3. Konfigurasyon/secrets standardi
 4. CI pipeline (lint, test, image build)
 
-## Faz-2 (2-3 hafta) - Core Operations MVP
+## Faz-2 (2 hafta) - Tenant ve Access Foundation
+
+1. Tenant/firma modeli
+2. Sube/park modeli
+3. Kullanici/rol modeli
+4. Bootstrap super admin akisi
+5. Park profil bilgileri yonetimi
+
+## Faz-3 (2-3 hafta) - Core Operations MVP
 
 1. Rezervasyon + biletleme API
 2. Turnike validasyon API
 3. Walk-in / acente kanal ayrimi
 4. Backoffice temel ekranlari
 
-## Faz-3 (2-3 hafta) - Cashless ve POS
+## Faz-4 (2-3 hafta) - Cashless ve POS
 
 1. Bileklik aktivasyon ve bakiye
 2. Harcama hareketleri
 3. Temel finans uzlastirma ciktilari
 
-## Faz-4 (2 hafta) - Reporting Backbone (2 DB)
+## Faz-5 (2 hafta) - Reporting Backbone (2 DB)
 
 1. DB-1 -> DB-2 veri aktarimi (CDC/ETL)
 2. Async rapor joblari
 3. Ilk KPI dashboardlari
 
-## Faz-5 (2 hafta) - Entegrasyon ve Hardening
+## Faz-6 (2 hafta) - Entegrasyon ve Hardening
 
 1. Ilk OTA/acente entegrasyonu
 2. Guvenlik, audit, role policy
@@ -42,7 +50,7 @@
 
 ## Nereye Devam Edelim?
 
-## Faz-6 (Surekli)
+## Faz-7 (Surekli)
 
 1. Gelismis kampanya motoru
 2. Gelismis finans/komisyon otomasyonu
@@ -53,6 +61,6 @@
 
 1. `docker-compose.yml` ile backend + frontend + postgres(2) + redis local stack
 2. DB-1 ve DB-2 schema ayrimi
-3. Queue tabanli rapor altyapisi (job table veya redis queue)
-4. API contract ve event naming standardi
-
+3. Tenant/firma + sube + kullanici/rol domain model taslagi
+4. Bootstrap super admin senaryosu
+5. API contract ve event naming standardi

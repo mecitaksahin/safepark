@@ -23,6 +23,8 @@ Sistem hem cloud hem on-prem (park icindeki sunucular) calisabilmelidir.
 6. Kampanya/paket (bilet + yiyecek)
 7. OTA entegrasyonlari
 8. Raporlama ve dashboard
+9. Tenant/firma, sube, kullanici ve rol yonetimi
+10. Aqua park profil bilgileri (adres, harita, telefon, web sitesi)
 
 ### 2.2 Out of Scope (MVP disi)
 
@@ -38,8 +40,25 @@ Sistem hem cloud hem on-prem (park icindeki sunucular) calisabilmelidir.
 4. Finance
 5. Operations Manager
 6. Acente Kullanici (B2B portal opsiyonel)
+7. Tenant Admin
 
 ## 4. Fonksiyonel Gereksinimler
+
+### FR-00 Tenant ve Erisim Temeli
+
+1. Sistem tenant/firma bazli calismalidir.
+2. Her tenant altinda bir veya daha fazla sube/park tanimi olmali.
+3. Kullanici hesaplari bir tenant ve role bagli olmali.
+4. Varsayilan bootstrap super admin kullanicisi ile ilk kurulum yapilabilmeli.
+5. Tenant/park profil bilgileri tutulmali:
+   - firma adi
+   - aqua park adi
+   - adres
+   - harita koordinatlari veya map linki
+   - telefon
+   - web sitesi
+6. Kullanici girisinde hangi firma ve hangi subede oldugu net olarak izlenebilmeli.
+7. Kritik degisiklikler audit log ile takip edilmelidir.
 
 ### FR-01 Rezervasyon ve Biletleme
 
@@ -146,11 +165,12 @@ Ozellik:
 
 ### P0 (Ilk canliya cikis)
 
-1. Rezervasyon + bilet + turnike
-2. Walk-in/acente kanal ayrimi
-3. Temel cashless harcama
-4. Temel komisyon raporu
-5. DB-1/DB-2 ayrimi ve async raporlama
+1. Tenant/firma + sube + kullanici/rol temeli
+2. Rezervasyon + bilet + turnike
+3. Walk-in/acente kanal ayrimi
+4. Temel cashless harcama
+5. Temel komisyon raporu
+6. DB-1/DB-2 ayrimi ve async raporlama
 
 ### P1
 
