@@ -22,3 +22,8 @@ Backend: health endpoint, smoke test, API dokumani.
 Frontend: ana sayfa, health status entegrasyonu.
 Is bitince PR acip sonuc notu ekleyin."
 
+## Prompt Dosyalari
+
+- `docs/agents/prompts/team-lead.prompt.md`
+- `docs/agents/prompts/backend.prompt.md`
+- `docs/agents/prompts/frontend.prompt.md`
