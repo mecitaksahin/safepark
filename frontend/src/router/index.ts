@@ -7,16 +7,20 @@ import { refreshSetupStatus } from "../state/setup";
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", redirect: "/login" },
+    { path: "/", name: "root", component: LoginPage },
     { path: "/install", name: "install", component: InstallPage },
     { path: "/login", name: "login", component: LoginPage },
     { path: "/dashboard", name: "dashboard", component: DashboardPage },
-    { path: "/:pathMatch(.*)*", redirect: "/login" },
+    { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
 });
 
 router.beforeEach(async (to) => {
   const installed = await refreshSetupStatus();
+
+  if (to.path === "/") {
+    return { path: installed ? "/login" : "/install" };
+  }
 
   if (!installed && to.path !== "/install") {
     return { path: "/install" };
