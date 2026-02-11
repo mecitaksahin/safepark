@@ -520,6 +520,18 @@ function findBranchOrThrow(branchId) {
   return branch;
 }
 
+function validateInstallKey(req) {
+  const configuredInstallKey = String(process.env.INSTALL_KEY || "");
+  if (!configuredInstallKey) {
+    return;
+  }
+
+  const providedInstallKey = String(req.headers["x-install-key"] || "");
+  if (!providedInstallKey || providedInstallKey !== configuredInstallKey) {
+    throw createHttpError(403, "Invalid install key", "invalid_install_key");
+  }
+}
+
 function markPlatformInstalled(created) {
   state.platformState.isInstalled = true;
   state.platformState.installedAt = nowIso();
@@ -539,6 +551,7 @@ async function handleInstall(req, res) {
     throw createHttpError(409, "Platform is already installed", "already_installed");
   }
 
+  validateInstallKey(req);
   ensureRolesSeeded();
   const payload = sanitizeTenantProvisionPayload(await readJsonBody(req));
 

@@ -3,6 +3,7 @@ const { spawn } = require("child_process");
 
 const PORT = Number(process.env.SMOKE_PORT || 3101);
 const BOOT_TIMEOUT_MS = 12_000;
+const INSTALL_KEY = "sprint4-install-key";
 
 function fail(message, details) {
   console.error(`Smoke failed: ${message}`);
@@ -12,7 +13,7 @@ function fail(message, details) {
   process.exit(1);
 }
 
-function request(method, path, body, token) {
+function request(method, path, body, token, extraHeaders) {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : null;
     const req = http.request(
@@ -25,6 +26,7 @@ function request(method, path, body, token) {
           "Content-Type": "application/json",
           ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(extraHeaders || {}),
         },
       },
       (res) => {
@@ -73,6 +75,7 @@ async function runSmoke() {
     env: {
       ...process.env,
       PORT: String(PORT),
+      INSTALL_KEY,
     },
     stdio: "inherit",
   });
@@ -114,7 +117,7 @@ async function runSmoke() {
       fail("deprecated bootstrap endpoint response is invalid", deprecatedBootstrap);
     }
 
-    const installResponse = await request("POST", "/install", {
+    const installPayload = {
       tenant: { code: "sprint4-demo", name: "Sprint 4 Demo Tenant" },
       branch: {
         code: "izmir-01",
@@ -126,6 +129,17 @@ async function runSmoke() {
         email: "admin@safepark.local",
         password: "Admin123!",
       },
+    };
+
+    const installWithWrongKey = await request("POST", "/install", installPayload, null, {
+      "x-install-key": "wrong-install-key",
+    });
+    if (installWithWrongKey.statusCode !== 403 || installWithWrongKey.body.code !== "invalid_install_key") {
+      fail("install request with invalid x-install-key must fail", installWithWrongKey);
+    }
+
+    const installResponse = await request("POST", "/install", installPayload, null, {
+      "x-install-key": INSTALL_KEY,
     });
 
     if (installResponse.statusCode !== 201 || installResponse.body.installed !== true) {
@@ -148,6 +162,8 @@ async function runSmoke() {
         email: "fail@safepark.local",
         password: "FailPass123!",
       },
+    }, null, {
+      "x-install-key": INSTALL_KEY,
     });
 
     if (secondInstall.statusCode !== 409 || secondInstall.body.code !== "already_installed") {

@@ -49,6 +49,7 @@ Kurulum tamamlandiktan sonra:
 - `POST /install`
 - Aciklama: Ilk kurulum endpointi; ilk tenant + ilk branch + ilk admin kullaniciyi olusturur.
 - Not: Sadece bir kez basarili olur. Ikinci denemede `409 already_installed` doner.
+- `INSTALL_KEY` env var set ise header zorunlu: `x-install-key: <INSTALL_KEY>`
 - Request body:
 
 ```json
@@ -115,6 +116,7 @@ Kurulum tamamlandiktan sonra:
 ```
 
 - Hata:
+  - `403` `invalid_install_key` (`INSTALL_KEY` set ve header eksik/yanlis oldugunda)
   - `409` `already_installed`
   - `400` `missing_fields`, `weak_password`
 
