@@ -33,10 +33,10 @@
 ## PR Links
 
 1. Backend PR: https://github.com/mecitaksahin/safepark/pull/3 (merged)
-2. Frontend PR: TBD
+2. Frontend PR: https://github.com/mecitaksahin/safepark/pull/4 (merged)
 
 ## Status
 
 1. Backend: merged
-2. Frontend: in_progress
-3. Team Lead Review: pending
+2. Frontend: merged
+3. Team Lead Review: completed
