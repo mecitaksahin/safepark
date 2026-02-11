@@ -9,6 +9,12 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url === "/version") {
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ version: "0.1.0" }));
+    return;
+  }
+
   res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify({ error: "Not Found" }));
 });
@@ -16,4 +22,3 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`SafePark backend listening on http://localhost:${PORT}`);
 });
-
