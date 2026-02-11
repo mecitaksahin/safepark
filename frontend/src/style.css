@@ -1,0 +1,50 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply m-0 bg-canvas font-sans text-ink;
+  }
+}
+
+@layer components {
+  .aurora-bg {
+    background:
+      radial-gradient(circle at 15% 20%, rgba(31, 122, 105, 0.14), transparent 35%),
+      radial-gradient(circle at 85% 15%, rgba(24, 90, 79, 0.14), transparent 32%),
+      radial-gradient(circle at 50% 100%, rgba(53, 78, 67, 0.09), transparent 45%);
+  }
+
+  .field-label {
+    @apply mb-1.5 inline-block text-xs font-bold uppercase tracking-[0.02em] text-ink/75;
+  }
+
+  .field-input {
+    @apply w-full rounded-[0.9rem] border border-mist bg-white px-3.5 py-2.5 text-ink transition;
+    @apply focus:border-brand focus:ring-brand/25;
+  }
+
+  .field-error {
+    @apply mt-1.5 text-xs text-danger;
+  }
+
+  .primary-btn {
+    @apply rounded-[0.9rem] border border-brand bg-brand px-4 py-2.5 font-bold text-white transition;
+    @apply hover:-translate-y-0.5 hover:bg-brand-strong disabled:cursor-wait disabled:opacity-70;
+  }
+
+  .feedback-success {
+    @apply rounded-[0.9rem] border border-emerald-700/35 bg-emerald-700/10 px-3.5 py-2.5 text-sm text-emerald-800;
+  }
+
+  .feedback-error {
+    @apply rounded-[0.9rem] border border-danger/35 bg-danger/10 px-3.5 py-2.5 text-sm text-danger;
+  }
+}
