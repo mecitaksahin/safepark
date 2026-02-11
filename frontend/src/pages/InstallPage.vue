@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { reactive } from "vue";
+import { computed, onMounted, reactive } from "vue";
 import { useRouter } from "vue-router";
 import { requestJson, toApiError } from "../lib/api";
-import { setInstalledFlag } from "../state/setup";
+import { setInstalledFlag, setupState } from "../state/setup";
 
 interface ParkProfileForm {
   parkName: string;
@@ -24,6 +24,7 @@ interface InstallForm {
 }
 
 const router = useRouter();
+const installLocked = computed(() => setupState.installed);
 
 const form = reactive<InstallForm>({
   tenantCode: "",
@@ -170,6 +171,12 @@ async function submitInstall(): Promise<void> {
     ui.loading = false;
   }
 }
+
+onMounted(() => {
+  if (setupState.installed) {
+    void router.replace("/login");
+  }
+});
 </script>
 
 <template>
@@ -181,7 +188,14 @@ async function submitInstall(): Promise<void> {
     </p>
   </header>
 
-  <form class="grid gap-4 md:grid-cols-2" @submit.prevent="submitInstall">
+  <div
+    v-if="installLocked"
+    class="rounded-[0.9rem] border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning"
+  >
+    Sistem kurulu gorunuyor. Install formu kapali; login ekranina yonlendiriliyorsunuz.
+  </div>
+
+  <form v-else class="grid gap-4 md:grid-cols-2" @submit.prevent="submitInstall">
     <p class="field-label md:col-span-2">Tenant</p>
 
     <label class="block">
@@ -318,6 +332,10 @@ async function submitInstall(): Promise<void> {
     </div>
   </form>
 
-  <p v-if="ui.successMessage" class="feedback-success mt-4">{{ ui.successMessage }}</p>
-  <p v-if="ui.errorMessage" class="feedback-error mt-4">{{ ui.errorMessage }}</p>
+  <p v-if="!installLocked && ui.successMessage" class="feedback-success mt-4">
+    {{ ui.successMessage }}
+  </p>
+  <p v-if="!installLocked && ui.errorMessage" class="feedback-error mt-4">
+    {{ ui.errorMessage }}
+  </p>
 </template>
