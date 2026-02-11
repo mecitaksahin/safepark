@@ -7,16 +7,16 @@ Bu repoda Team Lead, Backend ve Frontend ajanlari ayni kod tabaninda ama farkli 
 
 - `backend/`: API ve sunucu tarafi kodu
 - `frontend/`: Kullanici arayuzu kodu
-- `docs/`: Sprint, API ve teslim kriterleri
+- `docs/`: Sprint, API, gereksinim ve mimari dokumanlari
 - `.github/`: PR surecleri
 
 ## Ajan Organizasyonu
 
 - Team Lead: `safepark/` kok klasorunde calisir.
-- Backend Agent: `safepark/backend/` klasorunu ayri VS Code penceresinde acar.
-- Frontend Agent: `safepark/frontend/` klasorunu ayri VS Code penceresinde acar.
+- Backend Agent: `safepark-backend/backend/` klasorunu ayri VS Code penceresinde acar.
+- Frontend Agent: `safepark-frontend/frontend/` klasorunu ayri VS Code penceresinde acar.
 
-## Hızlı Baslangic
+## Hizli Baslangic
 
 1. Bagimliliklari yukleyin:
    - `cd backend && npm install`
@@ -24,6 +24,23 @@ Bu repoda Team Lead, Backend ve Frontend ajanlari ayni kod tabaninda ama farkli 
    - `npm run dev`
 3. Smoke testi calistirin:
    - `npm run smoke`
+
+## Docker ile Calistirma
+
+Tum servislere (backend + frontend + db1 + db2 + redis) tek komutla kalkis:
+
+1. `docker compose up --build -d`
+2. Backend health: `http://localhost:3001/health`
+3. Frontend UI: `http://localhost:8080`
+
+Loglari izleme:
+
+1. `docker compose logs -f`
+
+Durdurma:
+
+1. `docker compose down`
+2. Veriyi de silmek istersen: `docker compose down -v`
 
 ## Sprint ve PR Akisi
 
@@ -33,8 +50,12 @@ Bu repoda Team Lead, Backend ve Frontend ajanlari ayni kod tabaninda ama farkli 
 4. Team Lead review edip merge eder.
 
 Detaylar icin:
+
 - `docs/roles/team-lead.md`
 - `docs/roles/backend-agent.md`
 - `docs/roles/frontend-agent.md`
 - `docs/DoD.md`
-
+- `docs/requirements/Software-Requirements-v1.md`
+- `docs/architecture/Deployment-Strategy-v1.md`
+- `docs/architecture/Tech-Decision-v1.md`
+- `docs/roadmap/Implementation-Plan-v1.md`

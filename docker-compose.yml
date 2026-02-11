@@ -1,0 +1,82 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: safepark-backend
+    environment:
+      PORT: 3001
+      DB1_URL: postgresql://safepark:safepark@db1:5432/safepark_ops
+      DB2_URL: postgresql://safepark:safepark@db2:5432/safepark_reporting
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3001:3001"
+    depends_on:
+      db1:
+        condition: service_healthy
+      db2:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: safepark-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  db1:
+    image: postgres:16-alpine
+    container_name: safepark-db1
+    environment:
+      POSTGRES_DB: safepark_ops
+      POSTGRES_USER: safepark
+      POSTGRES_PASSWORD: safepark
+    ports:
+      - "5433:5432"
+    volumes:
+      - db1_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U safepark -d safepark_ops"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  db2:
+    image: postgres:16-alpine
+    container_name: safepark-db2
+    environment:
+      POSTGRES_DB: safepark_reporting
+      POSTGRES_USER: safepark
+      POSTGRES_PASSWORD: safepark
+    ports:
+      - "5434:5432"
+    volumes:
+      - db2_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U safepark -d safepark_reporting"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: safepark-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  db1_data:
+  db2_data:
+  redis_data:
+
