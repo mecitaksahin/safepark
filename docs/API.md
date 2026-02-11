@@ -1,6 +1,6 @@
 # API Draft
 
-Bu dokuman Sprint-3 ile tenant foundation endpointleri icin guncellenmistir.
+Bu dokuman Sprint-3 tenant foundation revizyonu ile guncellenmistir.
 
 ## Health
 
@@ -20,14 +20,15 @@ Bu dokuman Sprint-3 ile tenant foundation endpointleri icin guncellenmistir.
 
 ```json
 {
-  "version": "0.3.0"
+  "version": "0.3.1"
 }
 ```
 
 ## Setup Bootstrap
 
 - `POST /setup/bootstrap`
-- Aciklama: Ilk tenant + branch + admin kullanici olusturur. Bir kez calisir.
+- Aciklama: Platform ilk kurulumunu yapar (ilk tenant + ilk admin). Bir kez calisir.
+- Not: Sonraki tenant olusturmalari `POST /tenants` ile devam eder.
 - Request body:
 
 ```json
@@ -39,7 +40,7 @@ Bu dokuman Sprint-3 ile tenant foundation endpointleri icin guncellenmistir.
     "profile": { "timezone": "Europe/Istanbul", "capacity": 5500 }
   },
   "adminUser": {
-    "fullName": "Sprint Admin",
+    "fullName": "Platform Admin",
     "email": "admin@safepark.local",
     "password": "Admin123!"
   }
@@ -51,6 +52,7 @@ Bu dokuman Sprint-3 ile tenant foundation endpointleri icin guncellenmistir.
 ```json
 {
   "setupCompleted": true,
+  "platformInitialized": true,
   "tenant": {
     "id": "ten_0001",
     "code": "sprint3-demo",
@@ -67,17 +69,28 @@ Bu dokuman Sprint-3 ile tenant foundation endpointleri icin guncellenmistir.
     "createdAt": "2026-02-11T12:00:00.000Z",
     "updatedAt": "2026-02-11T12:00:00.000Z"
   },
+  "branches": [
+    {
+      "id": "brn_0001",
+      "tenantId": "ten_0001",
+      "code": "izmir-01",
+      "name": "Izmir Aqua Park",
+      "profile": { "timezone": "Europe/Istanbul", "capacity": 5500 },
+      "createdAt": "2026-02-11T12:00:00.000Z",
+      "updatedAt": "2026-02-11T12:00:00.000Z"
+    }
+  ],
   "adminUser": {
     "id": "usr_0001",
     "tenantId": "ten_0001",
     "branchId": "brn_0001",
     "email": "admin@safepark.local",
-    "fullName": "Sprint Admin",
+    "fullName": "Platform Admin",
     "isActive": true,
     "lastLoginAt": null,
     "createdAt": "2026-02-11T12:00:00.000Z",
     "updatedAt": "2026-02-11T12:00:00.000Z",
-    "roles": ["super_admin"]
+    "roles": ["super_admin", "platform_admin"]
   }
 }
 ```
@@ -86,6 +99,98 @@ Bu dokuman Sprint-3 ile tenant foundation endpointleri icin guncellenmistir.
   - `409` `bootstrap_already_done`
   - `400` `missing_fields`, `weak_password`
 
+## Tenant Create
+
+- `POST /tenants`
+- Header: `Authorization: Bearer <accessToken>`
+- Role policy: sadece `platform_admin`
+- Aciklama: Yeni tenant, primary branch ve tenant admin olusturur.
+- Request body:
+
+```json
+{
+  "tenant": { "code": "west-hub", "name": "West Hub Tenant" },
+  "branch": {
+    "code": "west-01",
+    "name": "West Main",
+    "profile": { "timezone": "Europe/Istanbul", "capacity": 3000 }
+  },
+  "extraBranches": [
+    {
+      "code": "west-02",
+      "name": "West Annex",
+      "profile": { "timezone": "Europe/Istanbul", "capacity": 1800 }
+    }
+  ],
+  "adminUser": {
+    "fullName": "West Manager",
+    "email": "admin@safepark.local",
+    "password": "WestPass123!",
+    "roles": ["branch_manager"]
+  }
+}
+```
+
+- Response `201 Created`
+
+```json
+{
+  "tenant": {
+    "id": "ten_0002",
+    "code": "west-hub",
+    "name": "West Hub Tenant",
+    "createdAt": "2026-02-11T12:00:00.000Z",
+    "updatedAt": "2026-02-11T12:00:00.000Z"
+  },
+  "branch": {
+    "id": "brn_0002",
+    "tenantId": "ten_0002",
+    "code": "west-01",
+    "name": "West Main",
+    "profile": { "timezone": "Europe/Istanbul", "capacity": 3000 },
+    "createdAt": "2026-02-11T12:00:00.000Z",
+    "updatedAt": "2026-02-11T12:00:00.000Z"
+  },
+  "branches": [
+    {
+      "id": "brn_0002",
+      "tenantId": "ten_0002",
+      "code": "west-01",
+      "name": "West Main",
+      "profile": { "timezone": "Europe/Istanbul", "capacity": 3000 },
+      "createdAt": "2026-02-11T12:00:00.000Z",
+      "updatedAt": "2026-02-11T12:00:00.000Z"
+    },
+    {
+      "id": "brn_0003",
+      "tenantId": "ten_0002",
+      "code": "west-02",
+      "name": "West Annex",
+      "profile": { "timezone": "Europe/Istanbul", "capacity": 1800 },
+      "createdAt": "2026-02-11T12:00:00.000Z",
+      "updatedAt": "2026-02-11T12:00:00.000Z"
+    }
+  ],
+  "adminUser": {
+    "id": "usr_0002",
+    "tenantId": "ten_0002",
+    "branchId": "brn_0002",
+    "email": "admin@safepark.local",
+    "fullName": "West Manager",
+    "isActive": true,
+    "lastLoginAt": null,
+    "createdAt": "2026-02-11T12:00:00.000Z",
+    "updatedAt": "2026-02-11T12:00:00.000Z",
+    "roles": ["branch_manager"]
+  }
+}
+```
+
+- Hata:
+  - `401` `missing_bearer_token`, `invalid_or_expired_token`
+  - `403` `insufficient_role`
+  - `409` `tenant_code_exists`, `email_already_exists`
+
 ## Login
 
 - `POST /auth/login`
@@ -93,6 +198,7 @@ Bu dokuman Sprint-3 ile tenant foundation endpointleri icin guncellenmistir.
 
 ```json
 {
+  "tenantCode": "sprint3-demo",
   "email": "admin@safepark.local",
   "password": "Admin123!"
 }
@@ -110,12 +216,12 @@ Bu dokuman Sprint-3 ile tenant foundation endpointleri icin guncellenmistir.
     "tenantId": "ten_0001",
     "branchId": "brn_0001",
     "email": "admin@safepark.local",
-    "fullName": "Sprint Admin",
+    "fullName": "Platform Admin",
     "isActive": true,
     "lastLoginAt": "2026-02-11T12:05:00.000Z",
     "createdAt": "2026-02-11T12:00:00.000Z",
     "updatedAt": "2026-02-11T12:05:00.000Z",
-    "roles": ["super_admin"]
+    "roles": ["super_admin", "platform_admin"]
   }
 }
 ```
@@ -137,12 +243,12 @@ Bu dokuman Sprint-3 ile tenant foundation endpointleri icin guncellenmistir.
     "tenantId": "ten_0001",
     "branchId": "brn_0001",
     "email": "admin@safepark.local",
-    "fullName": "Sprint Admin",
+    "fullName": "Platform Admin",
     "isActive": true,
     "lastLoginAt": "2026-02-11T12:05:00.000Z",
     "createdAt": "2026-02-11T12:00:00.000Z",
     "updatedAt": "2026-02-11T12:05:00.000Z",
-    "roles": ["super_admin"]
+    "roles": ["super_admin", "platform_admin"]
   },
   "tenant": {
     "id": "ten_0001",
@@ -166,61 +272,25 @@ Bu dokuman Sprint-3 ile tenant foundation endpointleri icin guncellenmistir.
 ## Park Profile
 
 - `GET /parks/:branchId/profile`
-- Header: `Authorization: Bearer <accessToken>`
-- Role policy: authenticated user + ayni tenant
-- Response `200 OK`
-
-```json
-{
-  "branch": {
-    "id": "brn_0001",
-    "tenantId": "ten_0001",
-    "code": "izmir-01",
-    "name": "Izmir Aqua Park",
-    "profile": { "timezone": "Europe/Istanbul", "capacity": 5500 },
-    "createdAt": "2026-02-11T12:00:00.000Z",
-    "updatedAt": "2026-02-11T12:00:00.000Z"
-  }
-}
-```
-
 - `PUT /parks/:branchId/profile`
 - Header: `Authorization: Bearer <accessToken>`
-- Role policy: `super_admin` veya `branch_manager`
-- Request body:
+- Role policy:
+  - `super_admin`: ayni tenant icindeki tum branchler
+  - `branch_manager`: sadece kendi `branchId`
+
+- `PUT /parks/:branchId/profile` request body:
 
 ```json
 {
-  "name": "Izmir Aqua Park North",
+  "name": "West Main Updated",
   "profile": {
     "timezone": "Europe/Istanbul",
-    "capacity": 6000,
-    "contactEmail": "north@safepark.local"
-  }
-}
-```
-
-- Response `200 OK`
-
-```json
-{
-  "branch": {
-    "id": "brn_0001",
-    "tenantId": "ten_0001",
-    "code": "izmir-01",
-    "name": "Izmir Aqua Park North",
-    "profile": {
-      "timezone": "Europe/Istanbul",
-      "capacity": 6000,
-      "contactEmail": "north@safepark.local"
-    },
-    "createdAt": "2026-02-11T12:00:00.000Z",
-    "updatedAt": "2026-02-11T12:10:00.000Z"
+    "capacity": 3200
   }
 }
 ```
 
 - Hata:
   - `401` `missing_bearer_token`, `invalid_or_expired_token`
-  - `403` `insufficient_role`, `cross_tenant_forbidden`
+  - `403` `insufficient_role`, `cross_tenant_forbidden`, `branch_scope_forbidden`
   - `404` `branch_not_found`

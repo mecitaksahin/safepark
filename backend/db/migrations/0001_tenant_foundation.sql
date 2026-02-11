@@ -1,6 +1,8 @@
 -- Sprint-3 Tenant Foundation schema draft
 -- Target: PostgreSQL
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS tenants (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   code VARCHAR(100) NOT NULL UNIQUE,
@@ -24,13 +26,14 @@ CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   branch_id UUID NULL REFERENCES branches(id) ON DELETE SET NULL,
-  email VARCHAR(255) NOT NULL UNIQUE,
+  email VARCHAR(255) NOT NULL,
   full_name VARCHAR(255) NOT NULL,
   password_hash TEXT NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   last_login_at TIMESTAMPTZ NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, email)
 );
 
 CREATE TABLE IF NOT EXISTS roles (
@@ -67,6 +70,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DE
 
 INSERT INTO roles (key, description)
 VALUES
+  ('platform_admin', 'Platform-level administrator'),
   ('super_admin', 'Tenant-level super administrator'),
   ('branch_manager', 'Branch-level manager'),
   ('operator', 'Operational user')

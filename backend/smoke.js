@@ -104,47 +104,137 @@ async function runSmoke() {
         profile: { timezone: "Europe/Istanbul", capacity: 5500 },
       },
       adminUser: {
-        fullName: "Sprint Admin",
+        fullName: "Platform Admin",
         email: "admin@safepark.local",
         password: "Admin123!",
       },
     });
-    if (bootstrapResponse.statusCode !== 201 || !bootstrapResponse.body.setupCompleted) {
+    if (bootstrapResponse.statusCode !== 201 || !bootstrapResponse.body.platformInitialized) {
       fail("bootstrap endpoint failed", bootstrapResponse);
     }
 
-    const loginResponse = await request("POST", "/auth/login", {
+    const tenant1Login = await request("POST", "/auth/login", {
+      tenantCode: "sprint3-demo",
       email: "admin@safepark.local",
       password: "Admin123!",
     });
-    if (loginResponse.statusCode !== 200 || !loginResponse.body.accessToken) {
-      fail("login endpoint failed", loginResponse);
+    if (tenant1Login.statusCode !== 200 || !tenant1Login.body.accessToken) {
+      fail("tenant scoped login for bootstrap tenant failed", tenant1Login);
     }
-    const accessToken = loginResponse.body.accessToken;
-    const branchId = bootstrapResponse.body.branch.id;
 
-    const meResponse = await request("GET", "/auth/me", null, accessToken);
+    const platformToken = tenant1Login.body.accessToken;
+    const tenant1BranchId = bootstrapResponse.body.branch.id;
+
+    const meResponse = await request("GET", "/auth/me", null, platformToken);
     if (
       meResponse.statusCode !== 200 ||
-      meResponse.body.user.email !== "admin@safepark.local" ||
       !Array.isArray(meResponse.body.user.roles) ||
-      !meResponse.body.user.roles.includes("super_admin")
+      !meResponse.body.user.roles.includes("platform_admin")
     ) {
       fail("/auth/me endpoint failed", meResponse);
     }
 
-    const profileGetResponse = await request("GET", `/parks/${branchId}/profile`, null, accessToken);
+    const tenantCreateResponse = await request(
+      "POST",
+      "/tenants",
+      {
+        tenant: { code: "west-hub", name: "West Hub Tenant" },
+        branch: {
+          code: "west-01",
+          name: "West Main",
+          profile: { timezone: "Europe/Istanbul", capacity: 3000 },
+        },
+        extraBranches: [
+          {
+            code: "west-02",
+            name: "West Annex",
+            profile: { timezone: "Europe/Istanbul", capacity: 1800 },
+          },
+        ],
+        adminUser: {
+          fullName: "West Manager",
+          email: "admin@safepark.local",
+          password: "WestPass123!",
+          roles: ["branch_manager"],
+        },
+      },
+      platformToken
+    );
+
     if (
-      profileGetResponse.statusCode !== 200 ||
-      profileGetResponse.body.branch.code !== "izmir-01" ||
-      profileGetResponse.body.branch.profile.timezone !== "Europe/Istanbul"
+      tenantCreateResponse.statusCode !== 201 ||
+      !tenantCreateResponse.body.tenant ||
+      !Array.isArray(tenantCreateResponse.body.branches) ||
+      tenantCreateResponse.body.branches.length !== 2
     ) {
-      fail("GET /parks/:branchId/profile endpoint failed", profileGetResponse);
+      fail("POST /tenants failed", tenantCreateResponse);
     }
 
-    const profileUpdateResponse = await request(
+    const westMain = tenantCreateResponse.body.branches.find((item) => item.code === "west-01");
+    const westAnnex = tenantCreateResponse.body.branches.find((item) => item.code === "west-02");
+    if (!westMain || !westAnnex) {
+      fail("tenant creation did not return expected branches", tenantCreateResponse);
+    }
+
+    const tenant2Login = await request("POST", "/auth/login", {
+      tenantCode: "west-hub",
+      email: "admin@safepark.local",
+      password: "WestPass123!",
+    });
+    if (tenant2Login.statusCode !== 200 || !tenant2Login.body.accessToken) {
+      fail("tenant scoped login for second tenant failed", tenant2Login);
+    }
+
+    const wrongTenantPassword = await request("POST", "/auth/login", {
+      tenantCode: "west-hub",
+      email: "admin@safepark.local",
+      password: "Admin123!",
+    });
+    if (wrongTenantPassword.statusCode !== 401) {
+      fail("tenant scoped login should fail with wrong tenant-scoped password", wrongTenantPassword);
+    }
+
+    const branchManagerToken = tenant2Login.body.accessToken;
+
+    const ownBranchGet = await request("GET", `/parks/${westMain.id}/profile`, null, branchManagerToken);
+    if (ownBranchGet.statusCode !== 200) {
+      fail("branch_manager could not read own branch", ownBranchGet);
+    }
+
+    const otherBranchGet = await request("GET", `/parks/${westAnnex.id}/profile`, null, branchManagerToken);
+    if (otherBranchGet.statusCode !== 403 || otherBranchGet.body.code !== "branch_scope_forbidden") {
+      fail("branch_manager should not read other branch profile", otherBranchGet);
+    }
+
+    const otherBranchUpdate = await request(
       "PUT",
-      `/parks/${branchId}/profile`,
+      `/parks/${westAnnex.id}/profile`,
+      {
+        name: "West Annex Updated",
+        profile: { capacity: 1900 },
+      },
+      branchManagerToken
+    );
+    if (otherBranchUpdate.statusCode !== 403 || otherBranchUpdate.body.code !== "branch_scope_forbidden") {
+      fail("branch_manager should not update other branch profile", otherBranchUpdate);
+    }
+
+    const ownBranchUpdate = await request(
+      "PUT",
+      `/parks/${westMain.id}/profile`,
+      {
+        name: "West Main Updated",
+        profile: { capacity: 3200 },
+      },
+      branchManagerToken
+    );
+    if (ownBranchUpdate.statusCode !== 200 || ownBranchUpdate.body.branch.profile.capacity !== 3200) {
+      fail("branch_manager should update own branch profile", ownBranchUpdate);
+    }
+
+    const bootstrapBranchUpdate = await request(
+      "PUT",
+      `/parks/${tenant1BranchId}/profile`,
       {
         name: "Izmir Aqua Park North",
         profile: {
@@ -153,17 +243,13 @@ async function runSmoke() {
           contactEmail: "north@safepark.local",
         },
       },
-      accessToken
+      platformToken
     );
-    if (
-      profileUpdateResponse.statusCode !== 200 ||
-      profileUpdateResponse.body.branch.name !== "Izmir Aqua Park North" ||
-      profileUpdateResponse.body.branch.profile.capacity !== 6000
-    ) {
-      fail("PUT /parks/:branchId/profile endpoint failed", profileUpdateResponse);
+    if (bootstrapBranchUpdate.statusCode !== 200 || bootstrapBranchUpdate.body.branch.profile.capacity !== 6000) {
+      fail("super_admin update on same tenant branch failed", bootstrapBranchUpdate);
     }
 
-    console.log("Smoke passed: tenant bootstrap, auth and park profile endpoints are healthy");
+    console.log("Smoke passed: tenant-scoped login and branch-manager branch boundaries are enforced");
   } catch (error) {
     fail(error.message);
   } finally {

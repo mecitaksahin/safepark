@@ -5,7 +5,14 @@ const { roleKeys } = require("./models/tenantFoundationModels");
 const PORT = Number(process.env.PORT || 3001);
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 8 * 60 * 60 * 1000);
 
+const PLATFORM_ADMIN_ROLE = "platform_admin";
+const TENANT_ADMIN_ROLES = new Set(["super_admin", "branch_manager", "operator"]);
+
 const state = {
+  platform: {
+    initializedAt: null,
+    bootstrapUserId: null,
+  },
   tenants: [],
   branches: [],
   users: [],
@@ -34,6 +41,10 @@ function nextId(kind, prefix) {
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
+}
+
+function normalizeCode(code) {
+  return String(code || "").trim().toLowerCase();
 }
 
 function sendJson(res, statusCode, payload) {
@@ -127,7 +138,59 @@ function sanitizeProfileInput(profile) {
   return cloneJson(profile);
 }
 
-function sanitizeBootstrapBody(body) {
+function sanitizeExtraBranches(extraBranches) {
+  if (extraBranches === undefined) {
+    return [];
+  }
+  if (!Array.isArray(extraBranches)) {
+    throw createHttpError(400, "`extraBranches` must be an array", "invalid_extra_branches");
+  }
+
+  return extraBranches.map((branch, index) => {
+    if (!isPlainObject(branch)) {
+      throw createHttpError(400, `extraBranches[${index}] must be an object`, "invalid_extra_branch");
+    }
+
+    const code = normalizeCode(branch.code);
+    const name = String(branch.name || "").trim();
+    if (!code || !name) {
+      throw createHttpError(400, `extraBranches[${index}] code and name are required`, "missing_extra_branch_fields");
+    }
+
+    return {
+      code,
+      name,
+      profile: sanitizeProfileInput(branch.profile),
+    };
+  });
+}
+
+function sanitizeAdminRoles(rawRoles, allowRoleSelection) {
+  if (!allowRoleSelection || rawRoles === undefined) {
+    return ["super_admin"];
+  }
+
+  if (!Array.isArray(rawRoles) || rawRoles.length === 0) {
+    throw createHttpError(400, "`adminUser.roles` must be a non-empty array", "invalid_admin_roles");
+  }
+
+  const normalized = Array.from(
+    new Set(
+      rawRoles.map((role) => String(role || "").trim().toLowerCase())
+    )
+  );
+
+  const invalidRole = normalized.find((role) => !TENANT_ADMIN_ROLES.has(role));
+  if (invalidRole) {
+    throw createHttpError(400, `Unsupported admin role: ${invalidRole}`, "invalid_admin_role");
+  }
+
+  return normalized;
+}
+
+function sanitizeTenantProvisionPayload(body, options = {}) {
+  const allowAdminRoleSelection = Boolean(options.allowAdminRoleSelection);
+
   if (!isPlainObject(body)) {
     throw createHttpError(400, "Request body must be an object");
   }
@@ -141,19 +204,26 @@ function sanitizeBootstrapBody(body) {
     throw createHttpError(400, "`adminUser` object is required", "admin_required");
   }
 
-  const tenantCode = String(body.tenant.code || "").trim();
+  const tenantCode = normalizeCode(body.tenant.code);
   const tenantName = String(body.tenant.name || "").trim();
-  const branchCode = String(body.branch.code || "").trim();
+  const branchCode = normalizeCode(body.branch.code);
   const branchName = String(body.branch.name || "").trim();
   const adminFullName = String(body.adminUser.fullName || "").trim();
   const adminEmail = normalizeEmail(body.adminUser.email);
   const adminPassword = String(body.adminUser.password || "");
 
   if (!tenantCode || !tenantName || !branchCode || !branchName || !adminFullName || !adminEmail || !adminPassword) {
-    throw createHttpError(400, "Missing required fields in bootstrap payload", "missing_fields");
+    throw createHttpError(400, "Missing required fields in payload", "missing_fields");
   }
   if (adminPassword.length < 8) {
     throw createHttpError(400, "Admin password must be at least 8 characters", "weak_password");
+  }
+
+  const extraBranches = sanitizeExtraBranches(body.extraBranches);
+  const branchCodes = [branchCode, ...extraBranches.map((item) => item.code)];
+  const uniqueBranchCodes = new Set(branchCodes);
+  if (uniqueBranchCodes.size !== branchCodes.length) {
+    throw createHttpError(400, "Branch codes must be unique within tenant payload", "duplicate_branch_code");
   }
 
   return {
@@ -166,10 +236,12 @@ function sanitizeBootstrapBody(body) {
       name: branchName,
       profile: sanitizeProfileInput(body.branch.profile),
     },
+    extraBranches,
     adminUser: {
       fullName: adminFullName,
       email: adminEmail,
       password: adminPassword,
+      roles: sanitizeAdminRoles(body.adminUser.roles, allowAdminRoleSelection),
     },
   };
 }
@@ -186,6 +258,23 @@ function ensureRolesSeeded() {
       description: key.replace(/_/g, " "),
       createdAt: now,
     });
+  }
+}
+
+function findTenantByCode(code) {
+  return state.tenants.find((tenant) => tenant.code === normalizeCode(code));
+}
+
+function assertTenantCodeAvailable(code) {
+  if (findTenantByCode(code)) {
+    throw createHttpError(409, "Tenant code already exists", "tenant_code_exists");
+  }
+}
+
+function assertTenantEmailAvailable(tenantId, email) {
+  const exists = state.users.some((user) => user.tenantId === tenantId && user.email === email);
+  if (exists) {
+    throw createHttpError(409, "Email already exists in tenant", "email_already_exists");
   }
 }
 
@@ -250,6 +339,85 @@ function publicBranch(branch) {
     profile: branch.profile,
     createdAt: branch.createdAt,
     updatedAt: branch.updatedAt,
+  };
+}
+
+function createBranch(tenantId, branchInput, timestamp) {
+  const branch = {
+    id: nextId("branch", "brn"),
+    tenantId,
+    code: branchInput.code,
+    name: branchInput.name,
+    profile: branchInput.profile,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  state.branches.push(branch);
+  return branch;
+}
+
+function createTenantWithAdmin(payload, options = {}) {
+  const adminRoles = Array.from(new Set(options.adminRoles || ["super_admin"]));
+  const action = options.action || "tenant.created";
+  const actorUserId = options.actorUserId || null;
+  const actorMetadata = options.actorMetadata || {};
+
+  assertTenantCodeAvailable(payload.tenant.code);
+
+  const timestamp = nowIso();
+  const tenant = {
+    id: nextId("tenant", "ten"),
+    code: payload.tenant.code,
+    name: payload.tenant.name,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  state.tenants.push(tenant);
+
+  const primaryBranch = createBranch(tenant.id, payload.branch, timestamp);
+  const extraBranches = payload.extraBranches.map((branchInput) => createBranch(tenant.id, branchInput, timestamp));
+
+  assertTenantEmailAvailable(tenant.id, payload.adminUser.email);
+  const adminUser = {
+    id: nextId("user", "usr"),
+    tenantId: tenant.id,
+    branchId: primaryBranch.id,
+    email: payload.adminUser.email,
+    fullName: payload.adminUser.fullName,
+    passwordHash: hashPassword(payload.adminUser.password),
+    isActive: true,
+    lastLoginAt: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  state.users.push(adminUser);
+
+  for (const roleKey of adminRoles) {
+    assignRoleToUser(adminUser.id, roleKey);
+  }
+
+  recordAuditLog({
+    tenantId: tenant.id,
+    branchId: primaryBranch.id,
+    userId: actorUserId || adminUser.id,
+    action,
+    entityType: "tenant",
+    entityId: tenant.id,
+    metadata: {
+      tenantCode: tenant.code,
+      branchCode: primaryBranch.code,
+      adminEmail: adminUser.email,
+      adminRoles,
+      ...actorMetadata,
+    },
+  });
+
+  return {
+    tenant,
+    branches: [primaryBranch, ...extraBranches],
+    primaryBranch,
+    adminUser,
+    adminRoles,
   };
 }
 
@@ -318,97 +486,126 @@ function requireRole(res, authContext, requiredRoleKeys) {
   return true;
 }
 
+function ensureTenantAccess(auth, branch) {
+  if (auth.user.tenantId !== branch.tenantId) {
+    throw createHttpError(403, "Forbidden for branch outside tenant", "cross_tenant_forbidden");
+  }
+}
+
+function ensureBranchProfileAccess(auth, branch) {
+  ensureTenantAccess(auth, branch);
+
+  if (auth.roles.includes("super_admin")) {
+    return;
+  }
+
+  if (auth.roles.includes("branch_manager")) {
+    if (auth.user.branchId === branch.id) {
+      return;
+    }
+    throw createHttpError(403, "Branch manager can only access own branch", "branch_scope_forbidden");
+  }
+
+  throw createHttpError(403, "Forbidden", "insufficient_role");
+}
+
+function findBranchOrThrow(branchId) {
+  const branch = state.branches.find((item) => item.id === branchId);
+  if (!branch) {
+    throw createHttpError(404, "Branch not found", "branch_not_found");
+  }
+  return branch;
+}
+
 async function handleBootstrap(req, res) {
-  if (state.tenants.length > 0) {
+  if (state.platform.initializedAt) {
     throw createHttpError(409, "Bootstrap already completed", "bootstrap_already_done");
   }
 
-  const payload = sanitizeBootstrapBody(await readJsonBody(req));
+  ensureRolesSeeded();
+  const payload = sanitizeTenantProvisionPayload(await readJsonBody(req));
 
-  if (state.users.some((user) => user.email === payload.adminUser.email)) {
-    throw createHttpError(409, "Admin email already exists", "email_already_exists");
+  const created = createTenantWithAdmin(payload, {
+    adminRoles: ["super_admin", PLATFORM_ADMIN_ROLE],
+    action: "setup.bootstrap.completed",
+  });
+
+  state.platform.initializedAt = nowIso();
+  state.platform.bootstrapUserId = created.adminUser.id;
+
+  sendJson(res, 201, {
+    setupCompleted: true,
+    platformInitialized: true,
+    tenant: created.tenant,
+    branch: publicBranch(created.primaryBranch),
+    branches: created.branches.map(publicBranch),
+    adminUser: {
+      ...publicUser(created.adminUser),
+      roles: getRoleKeysForUser(created.adminUser.id),
+    },
+  });
+}
+
+async function handleCreateTenant(req, res) {
+  const auth = requireAuth(req, res);
+  if (!auth) {
+    return;
+  }
+  if (!requireRole(res, auth, [PLATFORM_ADMIN_ROLE])) {
+    return;
   }
 
   ensureRolesSeeded();
+  const payload = sanitizeTenantProvisionPayload(await readJsonBody(req), {
+    allowAdminRoleSelection: true,
+  });
 
-  const now = nowIso();
-  const tenant = {
-    id: nextId("tenant", "ten"),
-    code: payload.tenant.code,
-    name: payload.tenant.name,
-    createdAt: now,
-    updatedAt: now,
-  };
-  state.tenants.push(tenant);
-
-  const branch = {
-    id: nextId("branch", "brn"),
-    tenantId: tenant.id,
-    code: payload.branch.code,
-    name: payload.branch.name,
-    profile: payload.branch.profile,
-    createdAt: now,
-    updatedAt: now,
-  };
-  state.branches.push(branch);
-
-  const adminUser = {
-    id: nextId("user", "usr"),
-    tenantId: tenant.id,
-    branchId: branch.id,
-    email: payload.adminUser.email,
-    fullName: payload.adminUser.fullName,
-    passwordHash: hashPassword(payload.adminUser.password),
-    isActive: true,
-    lastLoginAt: null,
-    createdAt: now,
-    updatedAt: now,
-  };
-  state.users.push(adminUser);
-  assignRoleToUser(adminUser.id, "super_admin");
-
-  recordAuditLog({
-    tenantId: tenant.id,
-    branchId: branch.id,
-    userId: adminUser.id,
-    action: "setup.bootstrap.completed",
-    entityType: "tenant",
-    entityId: tenant.id,
-    metadata: {
-      tenantCode: tenant.code,
-      branchCode: branch.code,
-      adminEmail: adminUser.email,
+  const created = createTenantWithAdmin(payload, {
+    adminRoles: payload.adminUser.roles,
+    action: "tenant.created",
+    actorUserId: auth.user.id,
+    actorMetadata: {
+      actorRoles: auth.roles,
+      actorTenantId: auth.user.tenantId,
     },
   });
 
   sendJson(res, 201, {
-    setupCompleted: true,
-    tenant,
-    branch: publicBranch(branch),
+    tenant: created.tenant,
+    branch: publicBranch(created.primaryBranch),
+    branches: created.branches.map(publicBranch),
     adminUser: {
-      ...publicUser(adminUser),
-      roles: getRoleKeysForUser(adminUser.id),
+      ...publicUser(created.adminUser),
+      roles: getRoleKeysForUser(created.adminUser.id),
     },
   });
 }
 
 async function handleLogin(req, res) {
   const body = await readJsonBody(req);
+  const tenantCode = normalizeCode(body.tenantCode);
   const email = normalizeEmail(body.email);
   const password = String(body.password || "");
-  if (!email || !password) {
-    throw createHttpError(400, "`email` and `password` are required", "missing_credentials");
+
+  if (!tenantCode || !email || !password) {
+    throw createHttpError(400, "`tenantCode`, `email` and `password` are required", "missing_credentials");
   }
 
-  const user = state.users.find((item) => item.email === email);
-  if (!user || !verifyPassword(password, user.passwordHash)) {
+  const tenant = findTenantByCode(tenantCode);
+  const user = tenant
+    ? state.users.find((item) => item.tenantId === tenant.id && item.email === email)
+    : null;
+
+  if (!tenant || !user || !verifyPassword(password, user.passwordHash)) {
     recordAuditLog({
+      tenantId: tenant ? tenant.id : null,
       action: "auth.login.failed",
       entityType: "user",
-      metadata: { email },
+      metadata: { tenantCode, email },
     });
-    throw createHttpError(401, "Invalid email or password", "invalid_credentials");
+    throw createHttpError(401, "Invalid tenantCode, email or password", "invalid_credentials");
   }
+
   if (!user.isActive) {
     throw createHttpError(403, "User is inactive", "inactive_user");
   }
@@ -422,9 +619,9 @@ async function handleLogin(req, res) {
     expiresAtMs,
   });
 
-  const now = nowIso();
-  user.lastLoginAt = now;
-  user.updatedAt = now;
+  const timestamp = nowIso();
+  user.lastLoginAt = timestamp;
+  user.updatedAt = timestamp;
 
   recordAuditLog({
     tenantId: user.tenantId,
@@ -433,6 +630,9 @@ async function handleLogin(req, res) {
     action: "auth.login.success",
     entityType: "user",
     entityId: user.id,
+    metadata: {
+      tenantCode,
+    },
   });
 
   sendJson(res, 200, {
@@ -462,20 +662,6 @@ function handleMe(req, res) {
   });
 }
 
-function findBranchOrThrow(branchId) {
-  const branch = state.branches.find((item) => item.id === branchId);
-  if (!branch) {
-    throw createHttpError(404, "Branch not found", "branch_not_found");
-  }
-  return branch;
-}
-
-function ensureTenantAccess(auth, branch) {
-  if (auth.user.tenantId !== branch.tenantId) {
-    throw createHttpError(403, "Forbidden for branch outside tenant", "cross_tenant_forbidden");
-  }
-}
-
 function handleGetBranchProfile(req, res, branchId) {
   const auth = requireAuth(req, res);
   if (!auth) {
@@ -483,7 +669,7 @@ function handleGetBranchProfile(req, res, branchId) {
   }
 
   const branch = findBranchOrThrow(branchId);
-  ensureTenantAccess(auth, branch);
+  ensureBranchProfileAccess(auth, branch);
 
   sendJson(res, 200, {
     branch: publicBranch(branch),
@@ -495,12 +681,9 @@ async function handleUpdateBranchProfile(req, res, branchId) {
   if (!auth) {
     return;
   }
-  if (!requireRole(res, auth, ["super_admin", "branch_manager"])) {
-    return;
-  }
 
   const branch = findBranchOrThrow(branchId);
-  ensureTenantAccess(auth, branch);
+  ensureBranchProfileAccess(auth, branch);
 
   const payload = await readJsonBody(req);
   if (!isPlainObject(payload)) {
@@ -560,13 +743,18 @@ async function handleRequest(req, res) {
   }
 
   if (req.method === "GET" && pathName === "/version") {
-    sendJson(res, 200, { version: "0.3.0" });
+    sendJson(res, 200, { version: "0.3.1" });
     return;
   }
 
   try {
     if (req.method === "POST" && pathName === "/setup/bootstrap") {
       await handleBootstrap(req, res);
+      return;
+    }
+
+    if (req.method === "POST" && pathName === "/tenants") {
+      await handleCreateTenant(req, res);
       return;
     }
 
