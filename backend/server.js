@@ -9,9 +9,12 @@ const PLATFORM_ADMIN_ROLE = "platform_admin";
 const TENANT_ADMIN_ROLES = new Set(["super_admin", "branch_manager", "operator"]);
 
 const state = {
-  platform: {
-    initializedAt: null,
-    bootstrapUserId: null,
+  platformState: {
+    isInstalled: false,
+    installedAt: null,
+    installedTenantId: null,
+    installedBranchId: null,
+    installedUserId: null,
   },
   tenants: [],
   branches: [],
@@ -517,25 +520,50 @@ function findBranchOrThrow(branchId) {
   return branch;
 }
 
-async function handleBootstrap(req, res) {
-  if (state.platform.initializedAt) {
-    throw createHttpError(409, "Bootstrap already completed", "bootstrap_already_done");
+function validateInstallKey(req) {
+  const configuredInstallKey = String(process.env.INSTALL_KEY || "");
+  if (!configuredInstallKey) {
+    return;
   }
 
+  const providedInstallKey = String(req.headers["x-install-key"] || "");
+  if (!providedInstallKey || providedInstallKey !== configuredInstallKey) {
+    throw createHttpError(403, "Invalid install key", "invalid_install_key");
+  }
+}
+
+function markPlatformInstalled(created) {
+  state.platformState.isInstalled = true;
+  state.platformState.installedAt = nowIso();
+  state.platformState.installedTenantId = created.tenant.id;
+  state.platformState.installedBranchId = created.primaryBranch.id;
+  state.platformState.installedUserId = created.adminUser.id;
+}
+
+function handleSetupStatus(req, res) {
+  sendJson(res, 200, {
+    installed: state.platformState.isInstalled,
+  });
+}
+
+async function handleInstall(req, res) {
+  if (state.platformState.isInstalled) {
+    throw createHttpError(409, "Platform is already installed", "already_installed");
+  }
+
+  validateInstallKey(req);
   ensureRolesSeeded();
   const payload = sanitizeTenantProvisionPayload(await readJsonBody(req));
 
   const created = createTenantWithAdmin(payload, {
     adminRoles: ["super_admin", PLATFORM_ADMIN_ROLE],
-    action: "setup.bootstrap.completed",
+    action: "setup.install.completed",
   });
 
-  state.platform.initializedAt = nowIso();
-  state.platform.bootstrapUserId = created.adminUser.id;
+  markPlatformInstalled(created);
 
   sendJson(res, 201, {
-    setupCompleted: true,
-    platformInitialized: true,
+    installed: true,
     tenant: created.tenant,
     branch: publicBranch(created.primaryBranch),
     branches: created.branches.map(publicBranch),
@@ -546,7 +574,20 @@ async function handleBootstrap(req, res) {
   });
 }
 
+function handleBootstrapDeprecated(req, res) {
+  sendJson(res, 410, {
+    error: "Endpoint deprecated",
+    code: "bootstrap_deprecated",
+    message: "Use POST /install endpoint for initial setup",
+    installEndpoint: "/install",
+  });
+}
+
 async function handleCreateTenant(req, res) {
+  if (!state.platformState.isInstalled) {
+    throw createHttpError(409, "Platform is not installed yet", "install_required");
+  }
+
   const auth = requireAuth(req, res);
   if (!auth) {
     return;
@@ -743,13 +784,23 @@ async function handleRequest(req, res) {
   }
 
   if (req.method === "GET" && pathName === "/version") {
-    sendJson(res, 200, { version: "0.3.1" });
+    sendJson(res, 200, { version: "0.4.0" });
+    return;
+  }
+
+  if (req.method === "GET" && pathName === "/setup/status") {
+    handleSetupStatus(req, res);
     return;
   }
 
   try {
+    if (req.method === "POST" && pathName === "/install") {
+      await handleInstall(req, res);
+      return;
+    }
+
     if (req.method === "POST" && pathName === "/setup/bootstrap") {
-      await handleBootstrap(req, res);
+      handleBootstrapDeprecated(req, res);
       return;
     }
 

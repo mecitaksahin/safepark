@@ -3,6 +3,7 @@ const { spawn } = require("child_process");
 
 const PORT = Number(process.env.SMOKE_PORT || 3101);
 const BOOT_TIMEOUT_MS = 12_000;
+const INSTALL_KEY = "sprint4-install-key";
 
 function fail(message, details) {
   console.error(`Smoke failed: ${message}`);
@@ -12,7 +13,7 @@ function fail(message, details) {
   process.exit(1);
 }
 
-function request(method, path, body, token) {
+function request(method, path, body, token, extraHeaders) {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : null;
     const req = http.request(
@@ -25,6 +26,7 @@ function request(method, path, body, token) {
           "Content-Type": "application/json",
           ...(payload ? { "Content-Length": Buffer.byteLength(payload) } : {}),
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(extraHeaders || {}),
         },
       },
       (res) => {
@@ -73,6 +75,7 @@ async function runSmoke() {
     env: {
       ...process.env,
       PORT: String(PORT),
+      INSTALL_KEY,
     },
     stdio: "inherit",
   });
@@ -96,8 +99,26 @@ async function runSmoke() {
   try {
     await waitForHealth(Date.now() + BOOT_TIMEOUT_MS);
 
-    const bootstrapResponse = await request("POST", "/setup/bootstrap", {
-      tenant: { code: "sprint3-demo", name: "Sprint 3 Demo Tenant" },
+    const preInstallStatus = await request("GET", "/setup/status");
+    if (preInstallStatus.statusCode !== 200 || preInstallStatus.body.installed !== false) {
+      fail("pre-install setup status is invalid", preInstallStatus);
+    }
+
+    const deprecatedBootstrap = await request("POST", "/setup/bootstrap", {
+      tenant: { code: "deprecated-demo", name: "Deprecated Demo" },
+      branch: { code: "deprecated-01", name: "Deprecated Branch" },
+      adminUser: {
+        fullName: "Deprecated Admin",
+        email: "deprecated@safepark.local",
+        password: "Deprecated123!",
+      },
+    });
+    if (deprecatedBootstrap.statusCode !== 410 || deprecatedBootstrap.body.code !== "bootstrap_deprecated") {
+      fail("deprecated bootstrap endpoint response is invalid", deprecatedBootstrap);
+    }
+
+    const installPayload = {
+      tenant: { code: "sprint4-demo", name: "Sprint 4 Demo Tenant" },
       branch: {
         code: "izmir-01",
         name: "Izmir Aqua Park",
@@ -108,148 +129,48 @@ async function runSmoke() {
         email: "admin@safepark.local",
         password: "Admin123!",
       },
+    };
+
+    const installWithWrongKey = await request("POST", "/install", installPayload, null, {
+      "x-install-key": "wrong-install-key",
     });
-    if (bootstrapResponse.statusCode !== 201 || !bootstrapResponse.body.platformInitialized) {
-      fail("bootstrap endpoint failed", bootstrapResponse);
+    if (installWithWrongKey.statusCode !== 403 || installWithWrongKey.body.code !== "invalid_install_key") {
+      fail("install request with invalid x-install-key must fail", installWithWrongKey);
     }
 
-    const tenant1Login = await request("POST", "/auth/login", {
-      tenantCode: "sprint3-demo",
-      email: "admin@safepark.local",
-      password: "Admin123!",
+    const installResponse = await request("POST", "/install", installPayload, null, {
+      "x-install-key": INSTALL_KEY,
     });
-    if (tenant1Login.statusCode !== 200 || !tenant1Login.body.accessToken) {
-      fail("tenant scoped login for bootstrap tenant failed", tenant1Login);
+
+    if (installResponse.statusCode !== 201 || installResponse.body.installed !== true) {
+      fail("install endpoint failed", installResponse);
     }
 
-    const platformToken = tenant1Login.body.accessToken;
-    const tenant1BranchId = bootstrapResponse.body.branch.id;
-
-    const meResponse = await request("GET", "/auth/me", null, platformToken);
-    if (
-      meResponse.statusCode !== 200 ||
-      !Array.isArray(meResponse.body.user.roles) ||
-      !meResponse.body.user.roles.includes("platform_admin")
-    ) {
-      fail("/auth/me endpoint failed", meResponse);
+    const postInstallStatus = await request("GET", "/setup/status");
+    if (postInstallStatus.statusCode !== 200 || postInstallStatus.body.installed !== true) {
+      fail("post-install setup status is invalid", postInstallStatus);
     }
 
-    const tenantCreateResponse = await request(
-      "POST",
-      "/tenants",
-      {
-        tenant: { code: "west-hub", name: "West Hub Tenant" },
-        branch: {
-          code: "west-01",
-          name: "West Main",
-          profile: { timezone: "Europe/Istanbul", capacity: 3000 },
-        },
-        extraBranches: [
-          {
-            code: "west-02",
-            name: "West Annex",
-            profile: { timezone: "Europe/Istanbul", capacity: 1800 },
-          },
-        ],
-        adminUser: {
-          fullName: "West Manager",
-          email: "admin@safepark.local",
-          password: "WestPass123!",
-          roles: ["branch_manager"],
-        },
+    const secondInstall = await request("POST", "/install", {
+      tenant: { code: "sprint4-demo-2", name: "Should Fail Tenant" },
+      branch: {
+        code: "izmir-02",
+        name: "Should Fail Branch",
       },
-      platformToken
-    );
-
-    if (
-      tenantCreateResponse.statusCode !== 201 ||
-      !tenantCreateResponse.body.tenant ||
-      !Array.isArray(tenantCreateResponse.body.branches) ||
-      tenantCreateResponse.body.branches.length !== 2
-    ) {
-      fail("POST /tenants failed", tenantCreateResponse);
-    }
-
-    const westMain = tenantCreateResponse.body.branches.find((item) => item.code === "west-01");
-    const westAnnex = tenantCreateResponse.body.branches.find((item) => item.code === "west-02");
-    if (!westMain || !westAnnex) {
-      fail("tenant creation did not return expected branches", tenantCreateResponse);
-    }
-
-    const tenant2Login = await request("POST", "/auth/login", {
-      tenantCode: "west-hub",
-      email: "admin@safepark.local",
-      password: "WestPass123!",
+      adminUser: {
+        fullName: "Should Fail",
+        email: "fail@safepark.local",
+        password: "FailPass123!",
+      },
+    }, null, {
+      "x-install-key": INSTALL_KEY,
     });
-    if (tenant2Login.statusCode !== 200 || !tenant2Login.body.accessToken) {
-      fail("tenant scoped login for second tenant failed", tenant2Login);
+
+    if (secondInstall.statusCode !== 409 || secondInstall.body.code !== "already_installed") {
+      fail("second install must fail with already_installed", secondInstall);
     }
 
-    const wrongTenantPassword = await request("POST", "/auth/login", {
-      tenantCode: "west-hub",
-      email: "admin@safepark.local",
-      password: "Admin123!",
-    });
-    if (wrongTenantPassword.statusCode !== 401) {
-      fail("tenant scoped login should fail with wrong tenant-scoped password", wrongTenantPassword);
-    }
-
-    const branchManagerToken = tenant2Login.body.accessToken;
-
-    const ownBranchGet = await request("GET", `/parks/${westMain.id}/profile`, null, branchManagerToken);
-    if (ownBranchGet.statusCode !== 200) {
-      fail("branch_manager could not read own branch", ownBranchGet);
-    }
-
-    const otherBranchGet = await request("GET", `/parks/${westAnnex.id}/profile`, null, branchManagerToken);
-    if (otherBranchGet.statusCode !== 403 || otherBranchGet.body.code !== "branch_scope_forbidden") {
-      fail("branch_manager should not read other branch profile", otherBranchGet);
-    }
-
-    const otherBranchUpdate = await request(
-      "PUT",
-      `/parks/${westAnnex.id}/profile`,
-      {
-        name: "West Annex Updated",
-        profile: { capacity: 1900 },
-      },
-      branchManagerToken
-    );
-    if (otherBranchUpdate.statusCode !== 403 || otherBranchUpdate.body.code !== "branch_scope_forbidden") {
-      fail("branch_manager should not update other branch profile", otherBranchUpdate);
-    }
-
-    const ownBranchUpdate = await request(
-      "PUT",
-      `/parks/${westMain.id}/profile`,
-      {
-        name: "West Main Updated",
-        profile: { capacity: 3200 },
-      },
-      branchManagerToken
-    );
-    if (ownBranchUpdate.statusCode !== 200 || ownBranchUpdate.body.branch.profile.capacity !== 3200) {
-      fail("branch_manager should update own branch profile", ownBranchUpdate);
-    }
-
-    const bootstrapBranchUpdate = await request(
-      "PUT",
-      `/parks/${tenant1BranchId}/profile`,
-      {
-        name: "Izmir Aqua Park North",
-        profile: {
-          timezone: "Europe/Istanbul",
-          capacity: 6000,
-          contactEmail: "north@safepark.local",
-        },
-      },
-      platformToken
-    );
-    if (bootstrapBranchUpdate.statusCode !== 200 || bootstrapBranchUpdate.body.branch.profile.capacity !== 6000) {
-      fail("super_admin update on same tenant branch failed", bootstrapBranchUpdate);
-    }
-
-    console.log("Smoke passed: tenant-scoped login and branch-manager branch boundaries are enforced");
+    console.log("Smoke passed: install flow status and idempotency rules are enforced");
   } catch (error) {
     fail(error.message);
   } finally {

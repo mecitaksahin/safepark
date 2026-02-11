@@ -50,6 +50,18 @@ const tenantFoundationModels = Object.freeze({
       "created_at",
     ],
   },
+  platformState: {
+    primaryKey: "id",
+    columns: [
+      "id",
+      "is_installed",
+      "installed_at",
+      "installed_tenant_id",
+      "installed_branch_id",
+      "installed_user_id",
+      "updated_at",
+    ],
+  },
 });
 
 const roleKeys = Object.freeze(["platform_admin", "super_admin", "branch_manager", "operator"]);
