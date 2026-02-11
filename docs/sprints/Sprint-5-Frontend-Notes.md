@@ -1,8 +1,8 @@
-# Sprint-5 Frontend Notes
+﻿# Sprint-5 Frontend Notes
 
 ## Scope
 
-- `App.vue` urun layoutuna sadeleştirildi:
+- `App.vue` urun layoutuna sadelestirildi:
   - Sol route menusu kaldirildi.
   - Debug/setup paneli kaldirildi.
   - Install/Login odakli tek kolon urun kabugu uygulandi.
@@ -30,3 +30,4 @@
   - Install basarili -> otomatik `/login`
   - `installed=true` iken `/` -> `/login`
   - `installed=true` iken `/install` -> `/login`
+
